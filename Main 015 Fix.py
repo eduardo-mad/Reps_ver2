@@ -71,6 +71,7 @@ if starting_page > 1:
             print("No se pudo avanzar a la página inicial definida. Continuando desde la actual.")
             break
 
+WebDriverWait(driver, 6000).until(lambda driver: driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text != first_row_data) #Cambiar el número según sea necesario
 current_page = starting_page
 # Iterar a través de las páginas
 for i in range(starting_page, pages + 1):
