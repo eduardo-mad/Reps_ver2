@@ -30,7 +30,10 @@ search = driver.find_element(By.ID, 'nombre_filtro')
 search.send_keys(" ")
 filtrBtn = driver.find_element(By.ID, 'filtro')
 filtrBtn.click()
-time.sleep(2)
+wait.until(
+    lambda driver: len(driver.find_elements(By.XPATH, "//table[@id='profesionalTable']/tbody/tr")) >= 5
+)
+#time.sleep(2)
 
 # Verificar la tabla de resultados
 try:
@@ -68,8 +71,10 @@ if starting_page > 1:
             print("No se pudo avanzar a la página inicial definida. Continuando desde la actual.")
             break
 
+current_page = starting_page
 # Iterar a través de las páginas
 for i in range(starting_page, pages + 1):
+    
     print(f"Procesando página {i} de {pages}...")
     try:
         WebDriverWait(driver, 15).until(
@@ -81,6 +86,7 @@ for i in range(starting_page, pages + 1):
     # Procesar filas de la tabla
     table = driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody')
     rows = table.find_elements(By.TAG_NAME, 'tr')
+    first_row_data = rows[0].find_element(By.TAG_NAME, 'td').text
 
     for row in rows:
         try:
@@ -122,6 +128,52 @@ for i in range(starting_page, pages + 1):
         nombre_completo = f"{nombre} {primer_apellido} {segundo_apellido}".strip()
         person_data.append(nombre_completo)
 
+
+        academicData = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="pestanas"]/ul/li[2]')))
+        academicData.click()
+
+        tabs_ul = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="pestanasTitulaciones"]/ul')))
+        tab_items = tabs_ul.find_elements(By.TAG_NAME, 'li')
+
+        for tab in tab_items:
+            if tab.is_displayed():
+                tab.click()  
+
+                for table_id in table_ids:
+                    try:
+                        academicTable = wait.until(EC.presence_of_element_located((By.XPATH, f'//*[@id="{table_id}"]/tbody')))
+                        titles = academicTable.find_elements(By.TAG_NAME, 'tr')
+                        for title in titles:
+                            title_data = title.find_elements(By.TAG_NAME, 'td')
+                            for td in title_data:
+                                    if(td.text != ""):
+                                        #print(td.text)
+                                        person_data.append(td.text)
+                    except TimeoutException:
+                        continue
+
+        profData = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="pestanas"]/ul/li[3]')))
+        profData.click()
+
+        profTable = wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="situacionProfesionalTable"]/tbody')))
+        positions = profTable.find_elements(By.TAG_NAME, 'tr')
+        
+        for position in positions:
+            position.click() 
+            position_data = position.find_elements(By.TAG_NAME, 'td')
+            for pd in position_data:
+                person_data.append(pd.text.title())
+            if first_iteration:
+                centerBtn = driver.find_element(By.XPATH, '//*[@id="headingOne"]/h4/a')
+                centerBtn.click()
+                wait.until(EC.visibility_of_element_located((By.XPATH, "//div[@id='datosSituacionProfesional']")))
+                first_iteration = False
+            centerTbl = driver.find_element(By.XPATH, '//*[@id="centroSituacionTable"]/tbody')
+            centerData = centerTbl.find_elements(By.TAG_NAME, 'td')
+            for cd in centerData:
+                person_data.append(cd.text.title())
+
+        
         # Guardar en CSV
         with open(filename, mode="a", newline="", encoding="utf-8") as file:
             writer = csv.writer(file)
@@ -131,14 +183,19 @@ for i in range(starting_page, pages + 1):
         btnClose = wait.until(EC.element_to_be_clickable((By.ID, 'headerButtonClose')))
         btnClose.click()
 
+
     # Avanzar a la siguiente página
     try:
+        current_page = current_page + 1
+        config['options']['page'] = str(current_page)
+        with open('config.ini', 'w') as configfile:
+            config.write(configfile)
         nextBtn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="profesionalTable_next"]/a')))
         if 'disabled' in nextBtn.get_attribute('class'):
             print("No hay más páginas disponibles.")
             break
         nextBtn.click()
-        time.sleep(2)
+        wait.until(lambda driver: driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text != first_row_data)
     except TimeoutException:
         print("No se pudo avanzar a la siguiente página. Cerrando...")
         break
