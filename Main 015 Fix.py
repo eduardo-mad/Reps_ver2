@@ -5,7 +5,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC 
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException, ElementClickInterceptedException
-import time
+from selenium.webdriver.edge.options import Options
+from datetime import datetime
 import csv
 from configparser import ConfigParser
 
@@ -20,7 +21,9 @@ person_data = []
 starting_page = int(config['options']['page'])
 
 # Inicio del script
-driver = webdriver.Edge(service=s)
+options = Options()
+#options.add_argument('--headless=new')  # Iniciar en modo minimizado, descomentar esta linea para seguir
+driver = webdriver.Edge(service=s, options=options)
 driver.maximize_window()
 wait = WebDriverWait(driver, 15)
 driver.get("https://reps.sanidad.gob.es/reps-web/inicio.htm")
@@ -33,7 +36,6 @@ filtrBtn.click()
 wait.until(
     lambda driver: len(driver.find_elements(By.XPATH, "//table[@id='profesionalTable']/tbody/tr")) >= 5
 )
-#time.sleep(2)
 
 # Verificar la tabla de resultados
 try:
@@ -63,33 +65,44 @@ except NoSuchElementException:
 
 # Saltar a la página inicial definida en config.ini
 if starting_page > 1:
-    for _ in range(starting_page - 1):
-        try:
+    n = 0
+while n < starting_page - 1:
+    try:
+        if (starting_page - n > 25):  # If more than 25 pages are left to reach the target
+            for i in range(25):
+                print(f"En página {n + 1} de {starting_page}")
+                nextBtn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="profesionalTable_next"]/a')))
+                nextBtn.click()
+                n += 1  # Manually increment n to keep track of page progress
+        else:  # If fewer than 25 pages are needed
+            print(f"En página {n + 1} de {starting_page}")
             nextBtn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="profesionalTable_next"]/a')))
             nextBtn.click()
-        except TimeoutException:
-            print("No se pudo avanzar a la página inicial definida. Continuando desde la actual.")
-            break
+            n += 1  # Manually increment n to keep track of page progress
+        
+        # Wait for the first row of the table to change
+        wait.until(lambda driver: driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text != first_row_data)
+        print("Cargando...")
+        first_row_data = driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text
+    except TimeoutException:
+        print("No se pudo avanzar a la página inicial definida. Continuando desde la actual.")
+        break
 
-WebDriverWait(driver, 6000).until(lambda driver: driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text != first_row_data) #Cambiar el número según sea necesario
+
 current_page = starting_page
 # Iterar a través de las páginas
 for i in range(starting_page, pages + 1):
     
     print(f"Procesando página {i} de {pages}...")
-    try:
-        WebDriverWait(driver, 15).until(
-            lambda d: d.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody/tr[1]/td').text != first_row_data
-        )
-    except TimeoutException:
-        print("No se detectó cambio en los datos. Verificando siguiente página...")
+    print("Hora en la que se inicia la extracción: " + datetime.now().strftime('%H:%M:%S'))
 
     # Procesar filas de la tabla
     table = driver.find_element(By.XPATH, '//*[@id="profesionalTable"]/tbody')
     rows = table.find_elements(By.TAG_NAME, 'tr')
     first_row_data = rows[0].find_element(By.TAG_NAME, 'td').text
 
-    for row in rows:
+    for index, row in enumerate(rows):
+        print("Extrayendo datos de índice: " + str(index + 1))
         try:
             btnPerson = row.find_element(By.TAG_NAME, 'button')
             try:
@@ -129,9 +142,11 @@ for i in range(starting_page, pages + 1):
         nombre_completo = f"{nombre} {primer_apellido} {segundo_apellido}".strip()
         person_data.append(nombre_completo)
 
-
-        academicData = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="pestanas"]/ul/li[2]')))
-        academicData.click()
+        try:
+            academicData = wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="pestanas"]/ul/li[2]')))
+            academicData.click()
+        except TimeoutException:
+            print("The academicData tab is not visible or does not exist.")
 
         tabs_ul = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="pestanasTitulaciones"]/ul')))
         tab_items = tabs_ul.find_elements(By.TAG_NAME, 'li')
